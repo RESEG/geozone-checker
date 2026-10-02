@@ -1,13 +1,9 @@
-
-## 7. .github/workflows/docker.yml — автосборка образа при пуше
-
-```yaml
 name: Build Docker image
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches:
+      - main
 
 jobs:
   build:
