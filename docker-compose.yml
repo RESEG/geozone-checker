@@ -1,0 +1,7 @@
+services:
+  web:
+    build: .
+    container_name: geozone-checker
+    ports:
+      - "8080:80"          # сайт будет доступен на http://localhost:8080
+    restart: unless-stopped

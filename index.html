@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проверка отчётов по геозонам</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f1f4f9;--card:#fff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;
+--primary:#2563eb;--ok:#16a34a;--warn:#d97706;--err:#dc2626}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text);padding-bottom:60px}
+.wrap{max-width:1400px;margin:0 auto;padding:0 16px}
+header{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:22px 0 26px;margin-bottom:20px}
+header h1{margin:0 0 6px;font-size:24px}
+header p{margin:0;opacity:.85;font-size:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+h2{font-size:16px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+h2 .step{background:var(--primary);color:#fff;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+.drop{border:2px dashed #c7d2fe;border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:.2s;background:#f8faff}
+.drop.hover{border-color:var(--primary);background:#eff6ff}
+.drop b{color:var(--primary)}
+.btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;cursor:pointer;font-family:inherit}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-ghost{background:#eef2ff;color:var(--primary)}
+.btn:disabled{opacity:.5;cursor:default}
+.row-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center}
+.fileinfo{font-size:13px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px}
+.stat .v{font-size:22px;font-weight:700}
+.stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+.stat.err .v{color:var(--err)} .stat.warn .v{color:var(--warn)} .stat.ok .v{color:var(--ok)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.filters label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+.filters input,.filters select{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit}
+.filters .pair{display:flex;gap:6px;align-items:center}
+.filters .pair input{min-width:0}
+.chk{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:14px}
+.chk label{display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;color:var(--text);font-size:14px}
+details.cfg summary{cursor:pointer;font-weight:600;font-size:14px}
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px}
+.cfg-grid input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;justify-content:space-between}
+.quick{display:flex;gap:8px;flex-wrap:wrap}
+.quick .btn{padding:7px 12px;font-size:13px;background:#eef2ff;color:var(--primary)}
+.quick .btn.active{background:var(--primary);color:#fff}
+.tblwrap{overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:1100px}
+th{position:sticky;top:0;background:#f8fafc;text-align:left;padding:9px 10px;border-bottom:2px solid var(--border);white-space:nowrap;font-size:12px;color:var(--muted)}
+td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;white-space:nowrap}
+td.note{white-space:normal;min-width:220px;font-size:12px;color:#475569}
+tr.status-err td{background:#fef2f2}
+tr.status-warn td{background:#fffbeb}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.b-ok{background:#dcfce7;color:#166534}.b-warn{background:#fef3c7;color:#92400e}.b-err{background:#fee2e2;color:#991b1b}
+.placeholder{text-align:center;padding:50px 20px;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+<h1>📍 Проверка отчётов по геозонам</h1>
+<p>Импорт Excel → автоматическая проверка каждой строки → фильтрация и выгрузка результата</p>
+</div></header>
+
+<div class="wrap">
+
+<!-- 1. ЗАГРУЗКА -->
+<section class="card">
+<h2><span class="step">1</span> Загрузка файла Excel</h2>
+<div class="drop" id="drop">
+  <div style="font-size:34px">📄⬇️</div>
+  <b>Перетащите файл сюда</b> или нажмите для выбора<br>
+  <span style="font-size:12px;color:var(--muted)">поддерживаются .xlsx, .xls, .csv</span>
+</div>
+<input type="file" id="file" accept=".xlsx,.xls,.xlsm,.csv" hidden>
+<div class="row-actions">
+  <button class="btn btn-ghost" id="btnDemo">Загрузить демо-данные</button>
+  <span class="fileinfo" id="fileInfo">Файл не загружен</span>
+</div>
+<details class="cfg" style="margin-top:14px">
+<summary>⚙️ Настройки проверок (пороги)</summary>
+<div class="cfg-grid">
+  <div><label>Макс. средняя скорость, км/ч</label><input type="number" id="cfgMaxSpeed" value="90" min="1"></div>
+  <div><label>Допуск по длительности, мин</label><input type="number" id="cfgDurTolMin" value="1" min="0"></div>
+  <div><label>Допуск по скорости, %</label><input type="number" id="cfgSpeedTolPct" value="10" min="0"></div>
+  <div><label>Допуск по скорости, км/ч</label><input type="number" id="cfgSpeedTolAbs" value="2" min="0"></div>
+</div>
+</details>
+<div class="hint">Выполняемые проверки: время выхода не раньше входа • длительность = выход − вход • средняя скорость = пробег / длительность (сверка со значением из отчёта) • скорость выше лимита • пробег при нулевой скорости / нулевой длительности • пустые и нераспознанные поля.</div>
+</section>
+
+<!-- 2. СВОДКА -->
+<section class="stats" id="stats" style="display:none">
+  <div class="stat"><div class="v" id="stTotal">0</div><div class="l">Записей (после фильтра)</div></div>
+  <div class="stat ok"><div class="v" id="stOk">0</div><div class="l">OK</div></div>
+  <div class="stat warn"><div class="v" id="stWarn">0</div><div class="l">Предупреждений</div></div>
+  <div class="stat err"><div class="v" id="stErr">0</div><div class="l">Ошибок</div></div>
+  <div class="stat"><div class="v" id="stMile">0</div><div class="l">Суммарный пробег, км</div></div>
+  <div class="stat"><div class="v" id="stDur">0</div><div class="l">Суммарное время</div></div>
+</section>
+
+<!-- 3. ФИЛЬТРЫ -->
+<section class="card" id="filtersCard" style="display:none">
+<h2><span class="step">2</span> Фильтр данных</h2>
+<div class="filters">
+  <div><label>Поиск по геозоне</label><input id="fSearch" placeholder="например: База"></div>
+  <div><label>Период: с</label><input type="date" id="fDateFrom"></div>
+  <div><label>по</label><input type="date" id="fDateTo"></div>
+  <div><label>Длительность, мин — от</label><div class="pair"><input type="number" id="fDurMin" min="0" placeholder="от"></div></div>
+  <div><label>до</label><div class="pair"><input type="number" id="fDurMax" min="0" placeholder="до"></div></div>
+  <div><label>Пробег, км — от</label><div class="pair"><input type="number" id="fMileMin" min="0" placeholder="от"></div></div>
+  <div><label>до</label><div class="pair"><input type="number" id="fMileMax" min="0" placeholder="до"></div></div>
+  <div><label>Ср. скорость, км/ч — от</label><div class="pair"><input type="number" id="fSpeedMin" min="0" placeholder="от"></div></div>
+  <div><label>до</label><div class="pair"><input type="number" id="fSpeedMax" min="0" placeholder="до"></div></div>
+</div>
+<div style="margin-top:12px" class="chk">
+  <label>Статус:</label>
+  <label><input type="checkbox" id="cbOk" checked> ✅ OK</label>
+  <label><input type="checkbox" id="cbWarn" checked> ⚠️ Предупреждения</label>
+  <label><input type="checkbox" id="cbErr" checked> ❌ Ошибки</label>
+  <button class="btn btn-ghost" id="btnReset" style="margin-left:auto">Сбросить фильтры</button>
+</div>
+</section>
+
+<!-- 4. ТАБЛИЦА -->
+<section class="card" id="tableCard" style="display:none">
+<div class="toolbar">
+  <h2 style="margin:0"><span class="step">3</span> Результат проверки <span class="fileinfo" id="shownInfo"></span></h2>
+  <div class="quick">
+    <button class="btn active" data-mode="all" id="qAll">Все</button>
+    <button class="btn" data-mode="problems" id="qProb">⚠️ Проблемные</button>
+    <button class="btn" data-mode="errors" id="qErr">❌ Только ошибки</button>
+    <button class="btn btn-primary" id="btnExport">⬇️ Выгрузить в Excel</button>
+  </div>
+</div>
+<div class="tblwrap">
+<table>
+<thead><tr>
+<th>№</th><th>Геозона</th><th>Время входа</th><th>Время выхода</th>
+<th>Длительность (отчёт)</th><th>Длительность (расчёт)</th>
+<th>Пробег, км</th><th>Скор. (отчёт)</th><th>Скор. (расчёт)</th>
+<th>Статус</th><th>Замечания</th>
+</tr></thead>
+<tbody id="tbody"></tbody>
+</table>
+</div>
+</section>
+
+<div class="placeholder card" id="empty">Загрузите Excel-файл или нажмите «Загрузить демо-данные», чтобы увидеть, как работает проверка.</div>
+
+</div>
+
+<script>
+"use strict";
+const state = { rows: [], filtered: [], source: "" };
+const cfg = { maxSpeed: 90, durTolSec: 60, speedTolAbs: 2, speedTolRel: 0.10 };
+const $ = id => document.getElementById(id);
+
+/* ---------- форматирование ---------- */
+const p2 = n => String(n).padStart(2, "0");
+function fmtDT(ts){ if(ts==null) return "—"; const d=new Date(ts);
+  return `${p2(d.getDate())}.${p2(d.getMonth()+1)}.${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`; }
+function fmtT(sec){ if(sec==null) return "—";
+  const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=Math.round(sec%60);
+  return `${p2(h)}:${p2(m)}:${p2(s)}`; }
+function fmtDur(sec){ if(sec==null) return "—"; const d=Math.floor(sec/86400), h=Math.floor(sec%86400/3600), m=Math.floor(sec%3600/60);
+  return d? `${d}д ${p2(h)}ч ${p2(m)}м` : h? `${h}ч ${p2(m)}м` : `${m}м`; }
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const statusText = s => s==="err" ? "Ошибка" : s==="warn" ? "Предупреждение" : "OK";
+
+/* ---------- парсинг значений ---------- */
+function parseTimeValue(v){
+  if(v==null || v==="") return null;
+  if(typeof v === "number" && isFinite(v)){
+    if(v < 0) return null;
+    if(v >= 61){ // серийная дата Excel
+      const i = XLSX.SSF.parse_date_code(v);
+      if(i) return { kind:"dt", ts:new Date(i.y, i.m-1, i.d, i.H, i.M, Math.floor(i.S)).getTime() };
+      return null;
+    }
+    return { kind:"t", secs: Math.round(v*86400) }; // только время / доля суток
+  }
+  if(v instanceof Date) return { kind:"dt", ts: v.getTime() };
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if(m){ let y=+m[3]; if(y<100) y+=2000;
+    return { kind:"dt", ts:new Date(y, +m[2]-1, +m[1], +(m[4]||0), +(m[5]||0), +(m[6]||0)).getTime() }; }
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if(m) return { kind:"dt", ts:new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0), +(m[6]||0)).getTime() };
+  m = s.match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/); // ЧЧ:ММ(:СС)
+  if(m) return { kind:"t", secs: +m[1]*3600 + +m[2]*60 + (+(m[3]||0)) };
+  return null;
+}
+function parseDuration(v){
+  if(v==null || v==="") return null;
+  if(typeof v === "number" && isFinite(v)){
+    if(v < 0) return null;
+    if(v < 61) return Math.round(v*86400);   // формат [ч]:мм:сс (доля суток)
+    if(Number.isInteger(v)) return v;        // эвристика: целое число — секунды
+    return null;
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,4}):(\d{1,2})(?::(\d{1,2}))?$/);
+  if(m) return +m[1]*3600 + +m[2]*60 + (+(m[3]||0));
+  let h=null, mi=null, found=false;
+  const mh = s.match(/(\d+(?:[.,]\d+)?)\s*(?:ч|час)/i),
+        mm = s.match(/(\d+(?:[.,]\d+)?)\s*(?:мин|м\b)/i);
+  if(mh){ h=parseFloat(mh[1].replace(",",".")); found=true; }
+  if(mm){ mi=parseFloat(mm[1].replace(",",".")); found=true; }
+  if(found) return Math.round((h||0)*3600 + (mi||0)*60);
+  return null;
+}
+function parseNumber(v){
+  if(v==null || v==="") return null;
+  if(typeof v === "number") return isFinite(v) ? v : null;
+  const m = String(v).replace(/\u00A0|\s/g,"").replace(",",".").match(/-?\d+(?:\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+function diffSeconds(a, b){
+  if(!a || !b) return null;
+  if(a.kind==="dt" && b.kind==="dt")
+    return { secs: Math.round((b.ts-a.ts)/1000), midnight:false, mixed:false };
+  if(a.kind==="t" && b.kind==="t"){
+    let d = b.secs - a.secs, mid = false;
+    if(d < 0){ d += 86400; mid = true; }
+    return { secs:d, midnight:mid, mixed:false };
+  }
+  if(a.kind==="dt" && b.kind==="t"){ // выход — только время, берём дату входа
+    const ad = new Date(a.ts);
+    const base = new Date(ad.getFullYear(), ad.getMonth(), ad.getDate()).getTime();
+    let d = Math.round((base + b.secs*1000 - a.ts)/1000), mid = false;
+    if(d < 0){ d += 86400; mid = true; }
+    return { secs:d, midnight:mid, mixed:false };
+  }
+  return { secs:null, midnight:false, mixed:true };
+}
+
+/* ---------- проверки строки (аналог формул ЕСЛИОШИБКА...) ---------- */
+function validateRow(r){
+  const P = []; let status = "ok";
+  const err  = t => { P.push("❌ " + t); if(status !== "err") status = "err"; };
+  const warn = t => { P.push("⚠️ " + t); if(status === "ok") status = "warn"; };
+
+  r.durCalc = null; r.speedCalc = null;
+
+  if(r.entry == null && r.exit == null) err("нет данных о времени входа/выхода");
+  else if(r.entry == null) warn("не распознано время входа (значение: «" + (r.entryRaw ?? "") + "»)");
+  else if(r.exit == null)  warn("не распознано время выхода (значение: «" + (r.exitRaw  ?? "") + "»)");
+
+  const dd = diffSeconds(r.entry, r.exit);
+  if(dd){
+    if(dd.mixed) err("смешанные форматы времени входа/выхода — сравнение невозможно");
+    else if(dd.secs < 0) err("время выхода раньше времени входа");
+    else {
+      r.durCalc = dd.secs;
+      if(dd.midnight) warn("предполагается пересечение полуночи (выход < вход в пределах суток)");
+      if(dd.secs === 0) warn("длительность равна нулю");
+    }
+  }
+
+  if(r.durStated != null && r.durCalc != null){
+    const diff = Math.abs(r.durCalc - r.durStated);
+    if(diff > cfg.durTolSec)
+      warn(`длительность в отчёте (${fmtT(r.durStated)}) расходится с расчётной (${fmtT(r.durCalc)}) на ${fmtT(diff)}`);
+  }
+
+  if(r.mileage != null && r.durCalc > 0)
+    r.speedCalc = r.mileage / (r.durCalc / 3600);
+
+  if(r.mileage > 0 && r.durCalc === 0) warn("пробег при нулевой длительности");
+  if(r.mileage > 0 && r.speedStated === 0) warn("пробег > 0 при средней скорости 0");
+  if(r.mileage === 0 && r.speedStated > 0) warn("средняя скорость > 0 при нулевом пробеге");
+
+  const sp = r.speedCalc != null ? r.speedCalc : r.speedStated;
+  if(sp != null && sp > cfg.maxSpeed)
+    warn(`средняя скорость ${sp.toFixed(1)} км/ч превышает лимит ${cfg.maxSpeed} км/ч`);
+
+  if(r.speedStated != null && r.speedCalc != null && r.mileage > 0){
+    const d = Math.abs(r.speedCalc - r.speedStated);
+    const rel = r.speedStated > 0 ? d / r.speedStated : 1;
+    if(d > cfg.speedTolAbs && rel > cfg.speedTolRel)
+      warn(`скорость в отчёте (${r.speedStated.toFixed(1)}) не совпадает с расчётной (${r.speedCalc.toFixed(1)} км/ч)`);
+  }
+
+  if(r.mileage == null) warn("не распознан пробег");
+  if(r.speedStated == null) warn("не распознана средняя скорость");
+  if(!r.geofone){ err("пустая геозона"); r.geofone = "(пусто)"; }
+
+  r.status = status; r.problems = P;
+}
+
+/* ---------- определение заголовков ---------- */
+function detectHeader(aoa){
+  const pats = {
+    num:[/^№$/i,/^n$/i,/^номер$/i], geofone:[/геозон/i,/^зона/i],
+    entry:[/вход/i], exit:[/выход/i],
+    duration:[/длит/i,/нахожд/i,/пребыв/i],
+    mileage:[/пробег/i], speed:[/скор/i]
+  };
+  const keys = { num:null, geofone:null, entry:null, exit:null, duration:null, mileage:null, speed:null };
+  let idx = -1;
+  for(let i=0; i<Math.min(aoa.length,30); i++){
+    let cnt = 0;
+    for(const c of (aoa[i]||[])){
+      if(c==null) continue;
+      const t = String(c).toLowerCase();
+      for(const k in pats){ if(pats[k].some(rx=>rx.test(t))){ cnt++; break; } }
+    }
+    if(cnt >= 3){ idx = i; break; }
+  }
+  if(idx < 0) return null;
+  const hr = aoa[idx];
+  for(let c=0; c<hr.length; c++){
+    if(hr[c]==null) continue;
+    const t = String(hr[c]).toLowerCase();
+    for(const k in pats){ if(keys[k]==null && pats[k].some(rx=>rx.test(t))){ keys[k]=c; break; } }
+  }
+  const order = ["num","geofone","entry","exit","duration","mileage","speed"];
+  let next = 0;
+  for(const k of order){
+    if(keys[k]==null){
+      while(next < hr.length && order.some(o => keys[o]===next)) next++;
+      if(next < hr.length){ keys[k]=next; next++; }
+    }
+  }
+  return { idx, keys };
+}
+
+/* ---------- обработка данных ---------- */
+function processAoa(aoa, sourceName){
+  const h = detectHeader(aoa);
+  const K = h ? h.keys : { num:0, geofone:1, entry:2, exit:3, duration:4, mileage:5, speed:6 };
+  const rows = [];
+  for(let i=(h?h.idx+1:0); i<aoa.length; i++){
+    const row = aoa[i] || [];
+    if(row.every(c => c==null || c==="")) continue;
+    const val = k => K[k]!=null ? row[K[k]] : null;
+    const r = {
+      srcRow: i+1, num: val("num"),
+      geofone: val("geofone")!=null ? String(val("geofone")).trim() : "",
+      entryRaw: val("entry"), exitRaw: val("exit"), durRaw: val("duration"),
+      mileage: parseNumber(val("mileage")), speedStated: parseNumber(val("speed")),
+      entry:null, exit:null, durStated:null, durCalc:null, speedCalc:null, entryDate:null
+    };
+    r.entry = parseTimeValue(r.entryRaw);
+    r.exit  = parseTimeValue(r.exitRaw);
+    r.durStated = parseDuration(r.durRaw);
+    if(r.entry && r.entry.kind==="dt"){
+      const d = new Date(r.entry.ts);
+      r.entryDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    validateRow(r);
+    rows.push(r);
+  }
+  state.rows = rows; state.source = sourceName;
+  $("fileInfo").textContent = sourceName + " — строк с данными: " + rows.length;
+  $("stats").style.display = ""; $("filtersCard").style.display = ""; $("tableCard").style.display = "";
+  $("empty").style.display = "none";
+  applyFilters();
+}
+
+function handleFile(file){
+  if(typeof XLSX === "undefined"){ alert("Библиотека XLSX не загрузилась — проверьте интернет."); return; }
+  const fr = new FileReader();
+  fr.onload = e => {
+    try{
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type:"array", cellDates:false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      processAoa(XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true }), file.name);
+    }catch(ex){ alert("Не удалось прочитать файл: " + ex.message); }
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+/* ---------- фильтрация ---------- */
+function applyFilters(){
+  const q = $("fSearch").value.trim().toLowerCase();
+  const st = { ok:$("cbOk").checked, warn:$("cbWarn").checked, err:$("cbErr").checked };
+  const dFrom = $("fDateFrom").value ? new Date($("fDateFrom").value+"T00:00") : null;
+  const dTo   = $("fDateTo").value   ? new Date($("fDateTo").value+"T23:59:59") : null;
+  const durMin = $("fDurMin").value==="" ? null : parseFloat($("fDurMin").value)*60;
+  const durMax = $("fDurMax").value==="" ? null : parseFloat($("fDurMax").value)*60;
+  const mMin = $("fMileMin").value==="" ? null : parseFloat($("fMileMin").value);
+  const mMax = $("fMileMax").value==="" ? null : parseFloat($("fMileMax").value);
+  const sMin = $("fSpeedMin").value==="" ? null : parseFloat($("fSpeedMin").value);
+  const sMax = $("fSpeedMax").value==="" ? null : parseFloat($("fSpeedMax").value);
+
+  state.filtered = state.rows.filter(r => {
+    if(q && !r.geofone.toLowerCase().includes(q)) return false;
+    if(!st[r.status]) return false;
+    if(dFrom && (!r.entryDate || r.entryDate < dFrom)) return false;
+    if(dTo   && (!r.entryDate || r.entryDate > dTo))   return false;
+    const dur = r.durCalc ?? r.durStated;
+    if(durMin!=null && (dur==null || dur < durMin)) return false;
+    if(durMax!=null && (dur==null || dur > durMax)) return false;
+    if(mMin!=null && (r.mileage==null || r.mileage < mMin)) return false;
+    if(mMax!=null && (r.mileage==null || r.mileage > mMax)) return false;
+    const sp = r.speedCalc ?? r.speedStated;
+    if(sMin!=null && (sp==null || sp < sMin)) return false;
+    if(sMax!=null && (sp==null || sp > sMax)) return false;
+    return true;
+  });
+  renderAll();
+}
+
+/* ---------- вывод ---------- */
+function dispT(parsed){ if(!parsed) return "—"; return parsed.kind==="dt" ? fmtDT(parsed.ts) : fmtT(parsed.secs); }
+function renderAll(){ renderSummary(); renderTable(); updateQuick(); }
+
+function renderSummary(){
+  const f = state.filtered;
+  $("stTotal").textContent = f.length;
+  $("stOk").textContent   = f.filter(r=>r.status==="ok").length;
+  $("stWarn").textContent = f.filter(r=>r.status==="warn").length;
+  $("stErr").textContent  = f.filter(r=>r.status==="err").length;
+  $("stMile").textContent = f.reduce((s,r)=>s+(r.mileage||0),0).toFixed(1);
+  $("stDur").textContent  = fmtDur(f.reduce((s,r)=>s+(r.durCalc ?? r.durStated ?? 0),0));
+}
+function renderTable(){
+  const tb = $("tbody");
+  if(!state.filtered.length){
+    tb.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">Ничего не найдено по текущим фильтрам</td></tr>';
+  } else {
+    tb.innerHTML = state.filtered.map(r => `
+      <tr class="status-${r.status}">
+        <td>${esc(r.num ?? "")}</td>
+        <td>${esc(r.geofone)}</td>
+        <td>${dispT(r.entry)}</td>
+        <td>${dispT(r.exit)}</td>
+        <td>${r.durStated!=null ? fmtT(r.durStated) : "—"}</td>
+        <td>${r.durCalc!=null ? fmtT(r.durCalc) : "—"}</td>
+        <td>${r.mileage!=null ? r.mileage.toFixed(1) : "—"}</td>
+        <td>${r.speedStated!=null ? r.speedStated.toFixed(1) : "—"}</td>
+        <td>${r.speedCalc!=null ? r.speedCalc.toFixed(1) : "—"}</td>
+        <td><span class="badge b-${r.status}">${statusText(r.status)}</span></td>
+        <td class="note">${r.problems.length ? r.problems.map(esc).join("<br>") : "—"}</td>
+      </tr>`).join("");
+  }
+  $("shownInfo").textContent = `показано ${state.filtered.length} из ${state.rows.length}`;
+}
+function updateQuick(){
+  const n = s => state.rows.filter(r=>r.status===s).length;
+  $("qAll").textContent  = `Все (${state.rows.length})`;
+  $("qProb").textContent = `⚠️ Проблемные (${n("warn")+n("err")})`;
+  $("qErr").textContent  = `❌ Только ошибки (${n("err")})`;
+}
+
+/* ---------- экспорт ---------- */
+function exportXlsx(){
+  if(!state.filtered.length){ alert("Нет данных для выгрузки"); return; }
+  const data = state.filtered.map(r => ({
+    "№": r.num ?? "", "Геозона": r.geofone,
+    "Время входа": dispT(r.entry), "Время выхода": dispT(r.exit),
+    "Длительность (отчёт)": r.durStated!=null ? fmtT(r.durStated) : "",
+    "Длительность (расчёт)": r.durCalc!=null ? fmtT(r.durCalc) : "",
+    "Пробег, км": r.mileage ?? "",
+    "Ср. скорость (отчёт)": r.speedStated ?? "",
+    "Ср. скорость (расчёт)": r.speedCalc!=null ? +r.speedCalc.toFixed(1) : "",
+    "Статус": statusText(r.status),
+    "Замечания": r.problems.join("; ")
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws["!cols"] = [{wch:5},{wch:25},{wch:19},{wch:19},{wch:14},{wch:14},{wch:11},{wch:12},{wch:12},{wch:15},{wch:60}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Проверка");
+  XLSX.writeFile(wb, "Проверка_геозон_результат.xlsx");
+}
+
+/* ---------- события ---------- */
+ $("drop").onclick = () => $("file").click();
+ $("file").onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+["dragover","dragenter"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.add("hover"); }));
+["dragleave","drop"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.remove("hover"); }));
+ $("drop").addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if(f) handleFile(f); });
+
+["cfgMaxSpeed","cfgDurTolMin","cfgSpeedTolPct","cfgSpeedTolAbs"].forEach(id =>
+  $(id).addEventListener("change", () => {
+    cfg.maxSpeed   = parseFloat($("cfgMaxSpeed").value)  || 90;
+    cfg.durTolSec  = (parseFloat($("cfgDurTolMin").value) || 0) * 60;
+    cfg.speedTolPct= (parseFloat($("cfgSpeedTolPct").value) || 0) / 100;
+    cfg.speedTolAbs= parseFloat($("cfgSpeedTolAbs").value) || 0;
+    state.rows.forEach(validateRow);
+    applyFilters();
+  }));
+
+["fSearch","fDateFrom","fDateTo","fDurMin","fDurMax","fMileMin","fMileMax","fSpeedMin","fSpeedMax","cbOk","cbWarn","cbErr"]
+  .forEach(id => $(id).addEventListener("input", () => { setQuickActive(null); applyFilters(); }));
+
+function setQuickActive(mode){
+  document.querySelectorAll(".quick .btn").forEach(b =>
+    b.classList.toggle("active", mode==null ? b.dataset.mode==="all" : b.dataset.mode===mode));
+}
+document.querySelectorAll(".quick .btn[data-mode]").forEach(b =>
+  b.addEventListener("click", () => {
+    const m = b.dataset.mode; setQuickActive(m);
+    $("cbOk").checked = m==="all"; $("cbWarn").checked = m!=="errors"; $("cbErr").checked = true;
+    applyFilters();
+  }));
+
+ $("btnReset").onclick = () => {
+  ["fSearch","fDateFrom","fDateTo","fDurMin","fDurMax","fMileMin","fMileMax","fSpeedMin","fSpeedMax"]
+    .forEach(id => $(id).value = "");
+  $("cbOk").checked = $("cbWarn").checked = $("cbErr").checked = true;
+  setQuickActive("all"); applyFilters();
+};
+ $("btnExport").onclick = exportXlsx;
+
+ $("btnDemo").onclick = () => {
+  processAoa([
+    ["№","Геозона","Время входа","Время выхода","Длительность нахождения","Пробег, км","Средняя скорость, км/ч"],
+    [1,"База окружная","01.05.2025 08:05:00","01.05.2025 17:42:00","9:37:00",142.6,14.8],
+    [2,"Окружной","01.05.2025 10:00:00","01.05.2025 10:45:00","0:45:00",60,80],
+    [3,"Склад Северный","01.05.2025 09:00:00","01.05.2025 09:30:00","1:30:00",5,3.3],
+    [4,"АЗС Лукойл","01.05.2025 14:00:00","01.05.2025 13:30:00","0:30:00",20,40],
+    [5,"Зона ремонта","02.05.2025 08:00:00","02.05.2025 09:00:00","1:00:00",300,300],
+    [6,"Парковка ТЦ","02.05.2025 18:00:00","02.05.2025 18:00:10","0:00:10",25,0],
+    [7,"Гараж №2","02.05.2025 22:30:00","02.05.2025 23:15:00","0:45:00",31.5,42],
+    [8,"Клиент Восток","03.05.2025 07:45:00","03.05.2025 16:20:00","8:35:00",260.4,30.2]
+  ], "Демо-данные");
+};
+</script>
+</body>
+</html>
